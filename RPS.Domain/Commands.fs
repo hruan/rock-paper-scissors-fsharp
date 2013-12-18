@@ -18,7 +18,7 @@ type MakeMoveCommand =
 let inline (|IsState|_|) expectedState state =
     if expectedState = state.gameState then Some (state) else None
 
-let inline (|IsValidMove|_|) value eq valueOf state =
+let inline (|IsValidWhen|_|) value eq valueOf state =
     if eq value (valueOf state) then Some (state) else None
 
 let createGame (command: CreateGameCommand) state =
@@ -31,8 +31,8 @@ let createGame (command: CreateGameCommand) state =
 let makeMove (command: MakeMoveCommand) state =
     let creatorOf state = state.creatorName
     match state with
-    | IsState GameState.Started validState
-      & IsValidMove command.playerName (<>) creatorOf _ ->
+    | IsState GameState.Started _
+      & IsValidWhen command.playerName (<>) creatorOf _ ->
         let result = wins state.creatorMove command.move
         [ MoveMadeEvent { playerName = command.playerName; move = command.move };
           GameEndedEvent { result = result; players = (state.creatorName, command.playerName) } ]
