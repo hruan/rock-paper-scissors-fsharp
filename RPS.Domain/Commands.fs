@@ -23,10 +23,10 @@ let inline (|IsValidWhen|_|) value eq valueOf state =
 
 let createGame (command: CreateGameCommand) state =
    match state with
-    | IsState GameState.NotStarted _ ->
-        [ GameCreatedEvent { name = command.name; playerName = command.playerName};
-          MoveMadeEvent { move = command.firstMove; playerName = command.playerName } ]
-    | _ -> List.empty
+   | IsState GameState.NotStarted _ ->
+       [ GameCreatedEvent { name = command.name; playerName = command.playerName};
+         MoveMadeEvent { move = command.firstMove; playerName = command.playerName } ]
+   | _ -> List.empty
 
 let makeMove (command: MakeMoveCommand) state =
     let creatorOf state = state.creatorName
