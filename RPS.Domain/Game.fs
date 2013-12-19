@@ -3,15 +3,15 @@
 open System
 
 type Move =
-  | Rock
-  | Paper
-  | Scissors
+    | Rock
+    | Paper
+    | Scissors
 
 type GameResult =
-  | PlayerOneWin
-  | PlayerTwoWin
-  | Tie
-    
+    | PlayerOneWin
+    | PlayerTwoWin
+    | Tie
+
 type GameState =
     | NotStarted
     | Created 
