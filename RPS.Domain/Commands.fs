@@ -4,13 +4,15 @@ open System
 open Game
 open Events
 
-type CreateGameCommand =
+type Command =
+    | CreateGameCommand of CreateGameCommand
+    | MakeMoveCommand   of MakeMoveCommand
+and CreateGameCommand =
     { playerName: string
       firstMove: Move
       name: string
       id: Guid }
-
-type MakeMoveCommand =
+and MakeMoveCommand =
     { move: Move
       playerName: string
       id: Guid }

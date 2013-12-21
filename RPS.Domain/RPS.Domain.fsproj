@@ -53,6 +53,8 @@
     <Compile Include="Events.fs" />
     <Compile Include="Commands.fs" />
     <Compile Include="State.fs" />
+    <Compile Include="ApplicationService.fs" />
+    <Compile Include="CommandRegistrations.fs" />
     <None Include="Scratch.fsx" />
   </ItemGroup>
   <ItemGroup>

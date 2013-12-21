@@ -2,6 +2,8 @@
 #load "Events.fs"
 #load "Commands.fs"
 #load "State.fs"
+#load "ApplicationService.fs"
+#load "CommandRegistrations.fs"
 
 open System
 open Game
