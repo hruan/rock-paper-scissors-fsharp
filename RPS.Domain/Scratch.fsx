@@ -8,18 +8,28 @@
 open System
 open Game
 
-let defaultState = { gameState = GameState.Started; creatorName = "Robin"; creatorMove = Game.Move.Rock }
+let gameId = Guid.NewGuid().ToString()
+let defaultState = { gameId = gameId; gameState = GameState.Started; creatorName = "Robin"; creatorMove = Game.Move.Rock }
 
 // Valid command
 Commands.makeMove
-    { move = Game.Move.Rock; playerName = "Batman"; id = Guid.Empty }
+    (Commands.MakeMoveCommand { move = Game.Move.Rock; playerName = "Batman"; gameId = gameId })
     defaultState
 
 // Invalid commands
 Commands.makeMove
-    { move = Game.Move.Rock; playerName = "Batman"; id = Guid.Empty }
+    (Commands.MakeMoveCommand { move = Game.Move.Rock; playerName = "Batman"; gameId = gameId })
     { defaultState with creatorName = "Batman" }
 
 Commands.makeMove
-    { move = Game.Move.Rock; playerName = "Batman"; id = Guid.Empty }
+    (Commands.MakeMoveCommand { move = Game.Move.Rock; playerName = "Batman"; gameId = gameId })
     { defaultState with gameState = Game.GameState.NotStarted }
+
+open ApplicationService
+
+let createCmd = Commands.CreateGameCommand { playerName = "Batman"; firstMove = Move.Paper }
+handlers.Post (RegisterCommandHandler (createCmd.GetType(), Commands.createGame))
+applicationService.Post createCmd
+
+let moveCmd = Commands.MakeMoveCommand { gameId = String.Empty; move = Move.Rock; playerName = "Robin" }
+handlers.Post (RegisterCommandHandler (moveCmd.GetType(), Commands.makeMove))

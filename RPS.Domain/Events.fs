@@ -7,11 +7,19 @@ type Event =
     | GameCreatedEvent of GameCreatedEvent
     | GameEndedEvent   of GameEndedEvent
 and MoveMadeEvent =
-    { playerName: string
+    { gameId: string
+      playerName: string
       move: Move }
 and GameCreatedEvent =
-    { name: string
+    { gameId: string
       playerName: string }
 and GameEndedEvent =
-    { result: GameResult
+    { gameId: string
+      result: GameResult
       players: string * string }
+
+let aggregateId event =
+    match event with
+    | GameCreatedEvent evt -> evt.gameId
+    | MoveMadeEvent evt    -> evt.gameId
+    | GameEndedEvent evt   -> evt.gameId

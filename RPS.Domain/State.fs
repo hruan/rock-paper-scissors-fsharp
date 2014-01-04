@@ -7,9 +7,9 @@ let restoreState state events =
     let step event state =
         match event with
         | GameCreatedEvent e ->
-            { gameState = GameState.Started; creatorName = e.playerName; creatorMove = state.creatorMove }
+            { state with gameId = e.gameId; gameState = GameState.Started; creatorName = e.playerName }
         | MoveMadeEvent e when e.playerName = state.creatorName ->
-            { gameState = state.gameState; creatorName = state.creatorName; creatorMove = e.move }
+            { state with creatorMove = e.move }
         | GameEndedEvent e ->
             { state with gameState = GameState.Ended }
         | _ -> state

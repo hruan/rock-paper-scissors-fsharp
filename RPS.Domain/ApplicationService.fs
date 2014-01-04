@@ -6,20 +6,17 @@ open Commands
 open State
 open Events
 
-type CommandHandler = Command -> Async<Event list>
+type CommandHandler   = Command -> State -> Event list
+type AggregateHandler = Command * CommandHandler * AsyncReplyChannel<Event list>
 
-type ApplicationServiceMessage = Command * State
-
-type EventSource = Async<Event list> * AsyncReplyChannel<Command list>
-
-type EventReceiver =
+type EventMutator = Event list * AsyncReplyChannel<Command list>
+type MutatorType =
     | Sink       of (Event -> unit)
     | Receptor   of (Event -> Command list)
-    | Propagator of (Event -> Event list)
 
 type ApplicationServiceCommand =
     | RegisterCommandHandler of Type * CommandHandler
-    | LocateCommandHandler   of Command * AsyncReplyChannel<CommandHandler option>
+    | LocateCommandHandler   of Command * AsyncReplyChannel<Event list>
 
 [<CustomEquality; CustomComparison>]
 type CommandType =
@@ -37,57 +34,103 @@ type CommandType =
         member self.CompareTo other =
             match other with
             | :? CommandType as info -> compare self.``type``.FullName info.``type``.FullName
-            | _ -> invalidArg "other" "can't compare objects of differen types"
+            | _ -> invalidArg "other" "can't compare objects of different types"
 
-let commandHandlers = MailboxProcessor<ApplicationServiceCommand>.Start(fun inbox ->
+let handlers = MailboxProcessor<ApplicationServiceCommand>.Start (fun inbox ->
+    let locateAggregate = MailboxProcessor<AggregateHandler>.Start (fun inbox ->
+        let rec loop aggregates = async {
+            let! command, handler, ch = inbox.Receive ()
+            match command with
+            | NonAggregateCommand _ ->
+                let events = handler command EmptyState
+                match events with
+                | h :: _ ->
+                    let aggregate = MailboxProcessor<AggregateHandler>.Start (fun inbox ->
+                        let rec aggrLoop state handler = async {
+                            let! cmd, handler, ch = inbox.Receive ()
+                            let evts = handler cmd state
+                            ch.Reply evts
+                            return! aggrLoop (State.restoreState state evts) handler
+                        }
+
+                        aggrLoop (State.restoreState EmptyState events) handler)
+                    printfn "new actor for aggregate %A" (aggregateId h)
+                    ch.Reply events
+                    return! loop (aggregates |> Map.add (aggregateId h) aggregate)
+                | _ -> ch.Reply events; return! loop aggregates
+            | _ ->
+                match Commands.aggregateId command with
+                | Some id ->
+                    printfn "processing command for aggregate %A" id
+                    if aggregates |> Map.containsKey id then
+                        let evts = aggregates.[id].PostAndReply (fun ch -> (command, handler, ch))
+                        printfn "events for command %A: %A" command evts
+                        ch.Reply evts
+                    else printfn "%A does not exist!" id; ch.Reply List.empty
+                    return! loop aggregates
+                | _ -> ch.Reply List.empty; return! loop aggregates
+        }
+
+        loop Map.empty
+    )
+        
     let rec loop commandHandlers = async {
-        let! command = inbox.Receive()
+        let! command = inbox.Receive ()
         match command with
-        | RegisterCommandHandler (cmd, handler) ->
-            let t = { ``type`` = cmd.GetType () }
-            if commandHandlers |> Map.containsKey t then return! loop commandHandlers
+        | RegisterCommandHandler (cmdType, handler) ->
+            let t = { ``type`` = cmdType }
+            printfn "registering handler %A for command type %A" handler t
+            if commandHandlers |> Map.containsKey t then printfn "handler already exists!"; return! loop commandHandlers
             else return! loop (commandHandlers |> Map.add t handler)
         | LocateCommandHandler (cmd, ch) ->
             let t = { ``type`` = cmd.GetType () }
+            printfn "processing command %A of type %A" cmd t
             let handler = commandHandlers |> Map.tryFind t
-            ch.Reply handler
-            return! loop commandHandlers
+            match handler with
+            | Some handler ->
+                let events = locateAggregate.PostAndReply (fun ch -> cmd, handler, ch)
+                ch.Reply events
+                return! loop commandHandlers
+            | None ->
+                printfn "no handler registered for command %A" cmd
+                ch.Reply List.empty
+                return! loop commandHandlers
     }
 
-    loop Map.empty<CommandType, CommandHandler>
+    loop Map.empty
 )
 
-let eventPublisher = MailboxProcessor<EventSource>.Start(fun inbox ->
-    let handle (ch: AsyncReplyChannel<Command list>) event receiver =
+let eventPublisher = MailboxProcessor<EventMutator>.Start(fun inbox ->
+    let handle event receiver =
         match receiver with
-        | Sink       recv -> recv event
-        | Receptor   recv -> recv event |> ch.Reply
-        | Propagator recv ->
-            let evts = async { return recv event }
-            inbox.Post (evts, ch)
+        | Sink       recv -> recv event; List.empty
+        | Receptor   recv -> recv event
 
     let rec loop receivers = async {
-        let! es, ch = inbox.Receive()
-        let! events = es
-        events
-        |> List.map (fun evt -> handle ch evt)
-        |> List.iter (fun handle -> receivers |> List.iter handle)
+        let! events, ch = inbox.Receive ()
+        if List.isEmpty receivers then ch.Reply List.empty
+        else
+            ch.Reply (receivers |> List.fold (fun evts r ->
+                          evts @ (events
+                                  |> List.map (fun evt -> handle evt r)
+                                  |> List.reduce (fun a b -> a @ b))) List.empty)
+        return! loop receivers
     }
 
-    loop List.empty<EventReceiver>
+    loop List.empty
 )
 
-let applicationService = MailboxProcessor<ApplicationServiceMessage>.Start(fun inbox ->
+let applicationService = MailboxProcessor<Command>.Start(fun inbox ->
     let rec loop () = async {
-        let! command, state = inbox.Receive()
-        let! reply = commandHandlers.PostAndAsyncReply(fun ch -> LocateCommandHandler (command, ch))
-        match reply with
-        | Some handler ->
-            let! reply = eventPublisher.PostAndTryAsyncReply(fun ch -> (handler command, ch))
-            match reply with
-            | Some cmds -> cmds |> List.iter (fun c -> inbox.Post (c, state)); return! loop ()
-            | None -> return! loop ()
-        | None -> return! loop ()
+        let! command = inbox.Receive ()
+        printfn "locating handler for command %A" command
+        let! events = handlers.PostAndAsyncReply (fun ch -> LocateCommandHandler (command, ch))
+        printfn "publishing events: %A" events
+        let! newCommands = eventPublisher.PostAndAsyncReply (fun ch -> events, ch)
+        printfn "posting new commands: %A" newCommands
+        newCommands |> List.iter (fun c -> inbox.Post c)
+        printfn "next!"
+        return! loop ()
     }
 
     loop ()

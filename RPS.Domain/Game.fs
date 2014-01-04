@@ -19,9 +19,16 @@ type GameState =
     | Ended
 
 type State =
-    { gameState: GameState
+    { gameId: string
+      gameState: GameState
       creatorName: string
       creatorMove: Move }
+
+let EmptyState =
+    { gameId = ""
+      gameState = GameState.NotStarted
+      creatorName = ""
+      creatorMove = Move.Paper }
 
 let wins playerOneMove playerTwoMove =
     match playerOneMove, playerTwoMove with 
