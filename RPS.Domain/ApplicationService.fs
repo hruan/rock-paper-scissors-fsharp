@@ -27,8 +27,8 @@ type CommandType =
         | :? CommandType as info -> self.``type``.FullName = info.``type``.FullName
         | _ -> false
 
-    override self.GetHashCode () =
-        self.``type``.FullName.GetHashCode ()
+    override self.GetHashCode() =
+        self.``type``.FullName.GetHashCode()
 
     interface IComparable with
         member self.CompareTo other =
@@ -39,7 +39,7 @@ type CommandType =
 let handlers = MailboxProcessor<ApplicationServiceCommand>.Start (fun inbox ->
     let locateAggregate = MailboxProcessor<AggregateHandler>.Start (fun inbox ->
         let rec loop aggregates = async {
-            let! command, handler, ch = inbox.Receive ()
+            let! command, handler, ch = inbox.Receive()
             match command with
             | NonAggregateCommand _ ->
                 let events = handler command EmptyState
@@ -47,7 +47,7 @@ let handlers = MailboxProcessor<ApplicationServiceCommand>.Start (fun inbox ->
                 | h :: _ ->
                     let aggregate = MailboxProcessor<AggregateHandler>.Start (fun inbox ->
                         let rec aggrLoop state handler = async {
-                            let! cmd, handler, ch = inbox.Receive ()
+                            let! cmd, handler, ch = inbox.Receive()
                             let evts = handler cmd state
                             ch.Reply evts
                             return! aggrLoop (State.restoreState state evts) handler
@@ -75,7 +75,7 @@ let handlers = MailboxProcessor<ApplicationServiceCommand>.Start (fun inbox ->
     )
         
     let rec loop commandHandlers = async {
-        let! command = inbox.Receive ()
+        let! command = inbox.Receive()
         match command with
         | RegisterCommandHandler (cmdType, handler) ->
             let t = { ``type`` = cmdType }
@@ -83,7 +83,7 @@ let handlers = MailboxProcessor<ApplicationServiceCommand>.Start (fun inbox ->
             if commandHandlers |> Map.containsKey t then printfn "handler already exists!"; return! loop commandHandlers
             else return! loop (commandHandlers |> Map.add t handler)
         | LocateCommandHandler (cmd, ch) ->
-            let t = { ``type`` = cmd.GetType () }
+            let t = { ``type`` = cmd.GetType() }
             printfn "processing command %A of type %A" cmd t
             let handler = commandHandlers |> Map.tryFind t
             match handler with
@@ -107,13 +107,12 @@ let eventPublisher = MailboxProcessor<EventMutator>.Start(fun inbox ->
         | Receptor   recv -> recv event
 
     let rec loop receivers = async {
-        let! events, ch = inbox.Receive ()
+        let! events, ch = inbox.Receive()
         if List.isEmpty receivers then ch.Reply List.empty
-        else
-            ch.Reply (receivers |> List.fold (fun evts r ->
-                          evts @ (events
-                                  |> List.map (fun evt -> handle evt r)
-                                  |> List.reduce (fun a b -> a @ b))) List.empty)
+        else ch.Reply (receivers |> List.fold (fun evts r ->
+            evts @ (events
+                    |> List.map (fun evt -> handle evt r)
+                    |> List.reduce (fun a b -> a @ b))) List.empty)
         return! loop receivers
     }
 
@@ -121,8 +120,8 @@ let eventPublisher = MailboxProcessor<EventMutator>.Start(fun inbox ->
 )
 
 let applicationService = MailboxProcessor<Command>.Start(fun inbox ->
-    let rec loop () = async {
-        let! command = inbox.Receive ()
+    let rec loop() = async {
+        let! command = inbox.Receive()
         printfn "locating handler for command %A" command
         let! events = handlers.PostAndAsyncReply (fun ch -> LocateCommandHandler (command, ch))
         printfn "publishing events: %A" events
@@ -130,8 +129,8 @@ let applicationService = MailboxProcessor<Command>.Start(fun inbox ->
         printfn "posting new commands: %A" newCommands
         newCommands |> List.iter (fun c -> inbox.Post c)
         printfn "next!"
-        return! loop ()
+        return! loop()
     }
 
-    loop ()
+    loop()
 )
